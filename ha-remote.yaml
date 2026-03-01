@@ -1,0 +1,227 @@
+# ESPHome HA Remote - Test 4-Button Controller
+# Hardware: ESP32-S3 N16R8 Development Board
+# Display: 2.4" TFT LCD Shield with ST7789V driver (240x320) + XPT2046 touchscreen
+
+substitutions:
+  name: ha-remote
+  friendly_name: "HA Remote"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  framework:
+    type: arduino
+  flash_size: 16MB
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  fast_connect: true
+
+logger:
+  level: INFO
+
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+spi:
+  - id: display_spi
+    clk_pin: GPIO18
+    mosi_pin: GPIO23
+    miso_pin: GPIO19
+
+# Import Home Assistant entities for state tracking
+homeassistant:
+  entities:
+    - entity_id: light.0xb0ce1814030b1eb3
+      id: joes_lamp
+    - entity_id: light.0xb0ce1814030b3ff1
+      id: saras_lamp
+    - entity_id: script.goodnight_script
+      id: goodnight
+    - entity_id: fan.in_wall_fan_speed_control_300s
+      id: bedroom_fan
+
+# ST7789V 2.4" Display (240x320)
+display:
+  - platform: st7789v
+    id: main_display
+    spi_id: display_spi
+    cs_pin: GPIO5
+    dc_pin: GPIO4
+    reset_pin: GPIO22
+    rotation: 0
+    dimensions:
+      width: 240
+      height: 320
+    color_depth: 16
+    data_rate: 40MHz
+    auto_clear_enabled: false
+    lambda: |-
+      // Header
+      it.filled_rectangle(0, 0, 240, 50, Color(0x2E, 0x7D, 0x32));  // Green header
+      it.printf(120, 25, id(font_title), TextAlign::CENTER, Color::WHITE, "Home Control");
+
+      // Button dimensions
+      int btn_w = 200;
+      int btn_h = 50;
+      int btn_x = 20;
+      int start_y = 70;
+      int spacing = 60;
+
+      // Button colors
+      auto on_color = Color(0x4C, 0xAF, 0x50);   // Green
+      auto off_color = Color(0x42, 0x42, 0x42);  // Dark gray
+
+      // Joe's Lamp
+      auto joes_state = id(joes_lamp).state;
+      auto joes_bg = joes_state == "on" ? on_color : off_color;
+      it.filled_rectangle(btn_x, start_y, btn_w, btn_h, joes_bg);
+      it.rectangle(btn_x, start_y, btn_w, btn_h, Color::WHITE);
+      it.printf(btn_x + btn_w/2, start_y + btn_h/2, id(font_medium), TextAlign::CENTER, Color::WHITE, "Joe's Lamp");
+      it.printf(btn_x + btn_w - 30, start_y + btn_h/2, id(font_medium), TextAlign::CENTER, Color::WHITE, joes_state == "on" ? "ON" : "OFF");
+
+      // Sara's Lamp
+      int y2 = start_y + spacing;
+      auto saras_state = id(saras_lamp).state;
+      auto saras_bg = saras_state == "on" ? on_color : off_color;
+      it.filled_rectangle(btn_x, y2, btn_w, btn_h, saras_bg);
+      it.rectangle(btn_x, y2, btn_w, btn_h, Color::WHITE);
+      it.printf(btn_x + btn_w/2, y2 + btn_h/2, id(font_medium), TextAlign::CENTER, Color::WHITE, "Sara's Lamp");
+      it.printf(btn_x + btn_w - 30, y2 + btn_h/2, id(font_medium), TextAlign::CENTER, Color::WHITE, saras_state == "on" ? "ON" : "OFF");
+
+      // Goodnight Scene
+      int y3 = start_y + spacing * 2;
+      it.filled_rectangle(btn_x, y3, btn_w, btn_h, Color(0x15, 0x65, 0xC0));  // Blue
+      it.rectangle(btn_x, y3, btn_w, btn_h, Color::WHITE);
+      it.printf(btn_x + btn_w/2, y3 + btn_h/2, id(font_medium), TextAlign::CENTER, Color::WHITE, "Goodnight");
+
+      // Bedroom Fan
+      int y4 = start_y + spacing * 3;
+      auto fan_state = id(bedroom_fan).state;
+      auto fan_bg = fan_state == "on" ? on_color : off_color;
+      it.filled_rectangle(btn_x, y4, btn_w, btn_h, fan_bg);
+      it.rectangle(btn_x, y4, btn_w, btn_h, Color::WHITE);
+      it.printf(btn_x + btn_w/2, y4 + btn_h/2, id(font_medium), TextAlign::CENTER, Color::WHITE, "Bedroom Fan");
+      it.printf(btn_x + btn_w - 30, y4 + btn_h/2, id(font_medium), TextAlign::CENTER, Color::WHITE, fan_state == "on" ? "ON" : "OFF");
+
+# XPT2046 Touchscreen
+touchscreen:
+  - platform: xpt2046
+    spi_id: display_spi
+    cs_pin: GPIO21
+    irq_pin: GPIO27
+    calibration:
+      x_min: 200
+      x_max: 3900
+      y_min: 200
+      y_max: 3900
+    transform:
+      swap_xy: true
+      mirror_x: false
+      mirror_y: true
+    on_touch:
+      - lambda: |-
+          int x = touch.x;
+          int y = touch.y;
+          int btn_x = 20;
+          int btn_w = 200;
+          int btn_h = 50;
+          int start_y = 70;
+          int spacing = 60;
+
+          // Joe's Lamp button
+          if (x >= btn_x && x <= btn_x + btn_w && y >= start_y && y <= start_y + btn_h) {
+            id(toggle_joes_lamp).press();
+          }
+          // Sara's Lamp button
+          else if (x >= btn_x && x <= btn_x + btn_w && y >= start_y + spacing && y <= start_y + spacing + btn_h) {
+            id(toggle_saras_lamp).press();
+          }
+          // Goodnight button
+          else if (x >= btn_x && x <= btn_x + btn_w && y >= start_y + spacing*2 && y <= start_y + spacing*2 + btn_h) {
+            id(trigger_goodnight).press();
+          }
+          // Bedroom Fan button
+          else if (x >= btn_x && x <= btn_x + btn_w && y >= start_y + spacing*3 && y <= start_y + spacing*3 + btn_h) {
+            id(toggle_bedroom_fan).press();
+          }
+
+# Fonts
+font:
+  - id: font_small
+    file: "gfonts://Roboto"
+    size: 12
+  - id: font_medium
+    file: "gfonts://Roboto"
+    size: 16
+  - id: font_title
+    file: "gfonts://Roboto"
+    size: 20
+
+# Toggle buttons
+button:
+  - id: toggle_joes_lamp
+    platform: template
+    name: "Toggle Joe's Lamp"
+    on_press:
+      - homeassistant.service:
+          service: light.toggle
+          data:
+            entity_id: light.0xb0ce1814030b1eb3
+      - component.update: main_display
+
+  - id: toggle_saras_lamp
+    platform: template
+    name: "Toggle Sara's Lamp"
+    on_press:
+      - homeassistant.service:
+          service: light.toggle
+          data:
+            entity_id: light.0xb0ce1814030b3ff1
+      - component.update: main_display
+
+  - id: trigger_goodnight
+    platform: template
+    name: "Trigger Goodnight"
+    on_press:
+      - homeassistant.service:
+          service: script.turn_on
+          data:
+            entity_id: script.goodnight_script
+      - component.update: main_display
+
+  - id: toggle_bedroom_fan
+    platform: template
+    name: "Toggle Bedroom Fan"
+    on_press:
+      - homeassistant.service:
+          service: fan.toggle
+          data:
+            entity_id: fan.in_wall_fan_speed_control_300s
+      - component.update: main_display
+
+# Status LED
+status_led:
+  pin:
+    number: GPIO48
+    inverted: true
+
+# Auto-refresh display when states change
+interval:
+  - interval: 2s
+    then:
+      - component.update: main_display
