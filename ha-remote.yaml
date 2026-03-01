@@ -1,14 +1,21 @@
 # ESPHome HA Remote - Test 4-Button Controller
 # Hardware: ESP32-S3 N16R8 Development Board
 # Display: 2.4" TFT LCD Shield with ST7789V driver (240x320) + XPT2046 touchscreen
+# Motion: ADXL345 3-axis accelerometer (sleep/wake detection)
 
 substitutions:
   name: ha-remote
   friendly_name: "HA Remote"
+  sleep_timeout: "30s"      # Time before display sleeps
+  motion_threshold: "0.3"   # G-force threshold for wake detection
 
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
+  on_boot:
+    - lambda: |-
+        id(display_awake) = true;
+        id(last_activity) = millis();
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -37,11 +44,62 @@ ota:
   - platform: esphome
     password: !secret ota_password
 
+# I2C for ADXL345 accelerometer
+i2c:
+  - id: accel_i2c
+    sda: GPIO8
+    scl: GPIO9
+    scan: true
+
+# SPI for display and touchscreen
 spi:
   - id: display_spi
     clk_pin: GPIO18
     mosi_pin: GPIO23
     miso_pin: GPIO19
+
+# Global state for sleep/wake
+globals:
+  - id: display_awake
+    type: bool
+    restore_value: false
+    initial_value: "true"
+  - id: last_activity
+    type: unsigned long
+    restore_value: false
+    initial_value: "0"
+
+# ADXL345 Accelerometer for sleep/wake detection
+sensor:
+  - platform: adxl345
+    i2c_id: accel_i2c
+    address: 0x53
+    update_interval: 100ms
+    accel_x:
+      name: "Accel X"
+      id: accel_x
+    accel_y:
+      name: "Accel Y"
+      id: accel_y
+    accel_z:
+      name: "Accel Z"
+      id: accel_z
+    on_value:
+      - lambda: |-
+          // Calculate total acceleration magnitude
+          float mag = sqrt(id(accel_x).state * id(accel_x).state +
+                          id(accel_y).state * id(accel_y).state +
+                          id(accel_z).state * id(accel_z).state);
+          
+          // If motion detected (significant change from ~1g)
+          float deviation = abs(mag - 1.0);
+          if (deviation > 0.15) {
+            id(last_activity) = millis();
+            if (!id(display_awake)) {
+              id(display_awake) = true;
+              id(main_display).update();
+            }
+          }
 
 # Import Home Assistant entities for state tracking
 homeassistant:
@@ -71,6 +129,12 @@ display:
     data_rate: 40MHz
     auto_clear_enabled: false
     lambda: |-
+      // Sleep mode - show nothing (or optional clock/sleep indicator)
+      if (!id(display_awake)) {
+        it.fill(Color::BLACK);
+        return;
+      }
+      
       // Header
       it.filled_rectangle(0, 0, 240, 50, Color(0x2E, 0x7D, 0x32));  // Green header
       it.printf(120, 25, id(font_title), TextAlign::CENTER, Color::WHITE, "Home Control");
@@ -135,6 +199,14 @@ touchscreen:
       mirror_y: true
     on_touch:
       - lambda: |-
+          // Wake on any touch
+          id(last_activity) = millis();
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(main_display).update();
+            return;  // Don't process button press on wake
+          }
+          
           int x = touch.x;
           int y = touch.y;
           int btn_x = 20;
@@ -220,8 +292,20 @@ status_led:
     number: GPIO48
     inverted: true
 
-# Auto-refresh display when states change
+# Sleep timeout check and display refresh
 interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          // Check for sleep timeout
+          if (id(display_awake)) {
+            unsigned long elapsed = millis() - id(last_activity);
+            if (elapsed > 30000) {  // 30 seconds
+              id(display_awake) = false;
+              id(main_display).update();
+            }
+          }
+  
   - interval: 2s
     then:
       - component.update: main_display

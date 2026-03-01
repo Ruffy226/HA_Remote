@@ -1,12 +1,13 @@
 # HA Remote - ESPHome Touch Controller
 
-A 4-button touchscreen remote for Home Assistant using ESP32-S3 with a 2.4" TFT display.
+A 4-button touchscreen remote for Home Assistant using ESP32-S3 with a 2.4" TFT display and ADXL345 accelerometer for sleep/wake detection.
 
 ## Hardware
 
 - **MCU**: ESP32-S3 N16R8 (16MB flash, 8MB PSRAM)
 - **Display**: 2.4" TFT LCD Shield with ST7789V driver (240x320)
 - **Touch**: XPT2046 resistive touchscreen
+- **Motion**: ADXL345 3-axis accelerometer (sleep/wake)
 
 ## Controls
 
@@ -22,10 +23,12 @@ A 4-button touchscreen remote for Home Assistant using ESP32-S3 with a 2.4" TFT 
 - Real-time state display (ON/OFF indicators)
 - Color-coded buttons (green = on, gray = off)
 - 2-second auto-refresh for state changes
+- **Sleep/wake via ADXL345**: Display turns off after 30s idle, wakes on motion or touch
 - Touch-responsive UI
 
 ## Wiring (ESP32-S3 DevKitC-1)
 
+### Display (SPI)
 | Pin | Function |
 |-----|----------|
 | GPIO18 | SPI CLK |
@@ -37,6 +40,15 @@ A 4-button touchscreen remote for Home Assistant using ESP32-S3 with a 2.4" TFT 
 | GPIO21 | Touch CS |
 | GPIO27 | Touch IRQ |
 | GPIO48 | Status LED (built-in, inverted) |
+
+### ADXL345 Accelerometer (I2C)
+| Pin | Function |
+|-----|----------|
+| GPIO8  | I2C SDA |
+| GPIO9  | I2C SCL |
+| VCC    | 3.3V |
+| GND    | GND |
+| CS     | 3.3V (to use I2C mode) |
 
 ## Setup
 
