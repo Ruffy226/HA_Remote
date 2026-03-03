@@ -1,104 +1,63 @@
 # HA Remote - Wiring Diagram
 
-## Display Module Pin Headers (Actual)
+Based on LCD Wiki MSP2402 2.4" SPI ILI9341 module standard pinout.
+
+## Display SPI Header (9 pins)
+
+| Pin | Label | Function | ESP32-S3 GPIO |
+|-----|-------|----------|---------------|
+| 1 | VCC | Power | 3.3V |
+| 2 | GND | Ground | GND |
+| 3 | CS | LCD Chip Select | GPIO10 |
+| 4 | RESET | LCD Reset | GPIO14 |
+| 5 | DC/RS | Data/Command | GPIO8 |
+| 6 | SDI (MOSI) | SPI Data In | GPIO11 |
+| 7 | SCK | SPI Clock | GPIO12 |
+| 8 | LED | Backlight | GPIO15 |
+| 9 | SDO (MISO) | SPI Data Out | GPIO13 |
+
+## Touch SPI Header (5 pins)
+
+| Pin | Label | Function | ESP32-S3 GPIO |
+|-----|-------|----------|---------------|
+| 1 | T_CLK | Touch Clock | GPIO12 (shared with SCK) |
+| 2 | T_CS | Touch Chip Select | GPIO9 |
+| 3 | T_DIN | Touch Data In | GPIO11 (shared with MOSI) |
+| 4 | T_DO | Touch Data Out | GPIO13 (shared with MISO) |
+| 5 | T_IRQ | Touch Interrupt | GPIO16 |
+
+## SPI Bus Sharing
+
+Display and touch share the same SPI bus:
+- **SCK** (GPIO12) → Display pin 7 + Touch T_CLK
+- **MOSI** (GPIO11) → Display pin 6 + Touch T_DIN
+- **MISO** (GPIO13) → Display pin 9 + Touch T_DO
+
+Each device has its own chip select:
+- **Display CS**: GPIO10
+- **Touch CS**: GPIO9
+
+## Quick Wiring Reference
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                                                              │
-│   J1 (Display - 9 pins)      J2 (Touch - 5 pins)             │
-│   ┌─────────────┐            ┌─────────┐                     │
-│   │ 1  VCC      │            │ T_IRQ   │                     │
-│   │ 2  GND      │            │ T_DO    │                     │
-│   │ 3  LCD_CS   │            │ T_DIN   │                     │
-│   │ 4  RESET    │            │ T_CS    │                     │
-│   │ 5  DC/RS    │            │ T_CLK   │                     │
-│   │ 6  LED_A    │            └─────────┘                     │
-│   │ 7  MISO     │                                            │
-│   │ 8  SCK      │            J3 (SD Card - 6 pins)           │
-│   │ 9  MOSI     │            ┌─────────┐                     │
-│   └─────────────┘            │ SD_SS   │                     │
-│                              │ SD_DI   │                     │
-│                              │ SD_DO   │                     │
-│                              │ SD_SCK  │                     │
-│                              │ LCD_RST │ ← Not needed, use   │
-│                              │ MISO    │   J1 RESET instead  │
-│                              └─────────┘                     │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
+ESP32-S3              Display Module
+────────              ──────────────
+3.3V    ────────────── VCC (pin 1)
+GND     ────────────── GND (pin 2)
+GPIO10  ────────────── CS (pin 3)
+GPIO14  ────────────── RESET (pin 4)
+GPIO8   ────────────── DC/RS (pin 5)
+GPIO11  ────────────── SDI/MOSI (pin 6)
+GPIO12  ────────────── SCK (pin 7)
+GPIO15  ────────────── LED (pin 8)
+GPIO13  ────────────── SDO/MISO (pin 9)
+
+ESP32-S3              Touch Header
+────────              ────────────
+GPIO9   ────────────── T_CS
+GPIO16  ────────────── T_IRQ
+(GPIO11, 12, 13 shared with display SPI)
 ```
-
----
-
-## J1 (Display - 9 pins) → ESP32-S3
-
-| J1 Pin | Label | ESP32-S3 | Notes |
-|--------|-------|----------|-------|
-| 1 | VCC | 3.3V | Power |
-| 2 | GND | GND | Ground |
-| 3 | LCD_CS | GPIO10 | Display chip select |
-| 4 | RESET | GPIO14 | Display reset |
-| 5 | DC/RS | GPIO8 | Data/Command |
-| 6 | LED_A | GPIO15 | Backlight PWM |
-| 7 | MISO | GPIO13 | SPI MISO |
-| 8 | SCK | GPIO12 | SPI Clock |
-| 9 | MOSI | GPIO11 | SPI MOSI |
-
----
-
-## J2 (Touch - 5 pins) → ESP32-S3
-
-| J2 Pin | Label | ESP32-S3 | Notes |
-|--------|-------|----------|-------|
-| 1 | T_IRQ | GPIO16 | Touch interrupt |
-| 2 | T_DO | GPIO13 | Shares MISO (internally connected) |
-| 3 | T_DIN | GPIO11 | Shares MOSI (internally connected) |
-| 4 | T_CS | GPIO9 | Touch chip select |
-| 5 | T_CLK | GPIO12 | Shares SCK (internally connected) |
-
-**Note**: T_DO, T_DIN, T_CLK are internally connected to J1's MISO, MOSI, SCK. Only need to wire T_CS and T_IRQ.
-
----
-
-## J3 (SD Card - 6 pins) → ESP32-S3
-
-| J3 Pin | Label | Wire? | Notes |
-|--------|-------|-------|-------|
-| 1 | SD_SS | No | SD card - skip |
-| 2 | SD_DI | No | SD MOSI - skip |
-| 3 | SD_DO | No | SD MISO - skip |
-| 4 | SD_SCK | No | SD Clock - skip |
-| 5 | LCD_RST | No | Use J1 RESET instead |
-| 6 | MISO | No | Use J1 MISO instead |
-
-**Skip J3 entirely** - all needed pins are on J1.
-
----
-
-## Quick Reference
-
-```
-J1 (Display - 9 pins)     ESP32-S3
-─────────────────────     ────────
-VCC     ────────────────── 3.3V
-GND     ────────────────── GND
-LCD_CS  ────────────────── GPIO10
-RESET   ────────────────── GPIO14
-DC/RS   ────────────────── GPIO8
-LED_A   ────────────────── GPIO15
-MISO    ────────────────── GPIO13
-SCK     ────────────────── GPIO12
-MOSI    ────────────────── GPIO11
-
-J2 (Touch - 5 pins)       ESP32-S3
-─────────────────────     ────────
-T_IRQ   ────────────────── GPIO16
-T_CS    ────────────────── GPIO9
-(T_DO, T_DIN, T_CLK shared via J1)
-
-J3 (SD Card) - Skip entirely
-```
-
----
 
 ## ADXL345 Accelerometer (Optional)
 
@@ -110,3 +69,12 @@ J3 (SD Card) - Skip entirely
 | SCL | GPIO18 |
 | INT1 | GPIO21 |
 | CS | 3.3V (I2C mode) |
+
+---
+
+## Notes
+
+1. **Backlight**: LED pin can be PWM controlled via GPIO15 for brightness and sleep/wake
+2. **Touch IRQ**: T_IRQ goes LOW when touch detected - useful for wake-on-touch
+3. **MISO**: Optional if you don't need to read from display (touch still needs it)
+4. **Voltage**: Module works with 3.3V logic (VCC can be 3.3V or 5V)
