@@ -1,7 +1,8 @@
 # ESPHome HA Remote - Test 4-Button Controller
 # Hardware: ESP32-S3 N16R8 Development Board
-# Display: 2.4" TFT LCD Shield with ST7789V driver (240x320) + XPT2046 touchscreen
+# Display: 2.4" TFT LCD Shield with ILI9341 driver (240x320) + XPT2046 touchscreen
 # Motion: ADXL345 3-axis accelerometer (sleep/wake detection)
+# See WIRING-DIAGRAM.md for pin connections
 
 substitutions:
   name: ha-remote
@@ -47,16 +48,16 @@ ota:
 # I2C for ADXL345 accelerometer
 i2c:
   - id: accel_i2c
-    sda: GPIO8
-    scl: GPIO9
+    sda: GPIO17
+    scl: GPIO18
     scan: true
 
 # SPI for display and touchscreen
 spi:
   - id: display_spi
-    clk_pin: GPIO18
-    mosi_pin: GPIO23
-    miso_pin: GPIO19
+    clk_pin: GPIO12    # SCL on J1
+    mosi_pin: GPIO11   # SDA on J1  
+    miso_pin: GPIO13   # MISO on J3
 
 # Global state for sleep/wake
 globals:
@@ -113,14 +114,15 @@ homeassistant:
     - entity_id: fan.in_wall_fan_speed_control_300s
       id: bedroom_fan
 
-# ST7789V 2.4" Display (240x320)
+# ILI9341 2.4" Display (240x320)
 display:
-  - platform: st7789v
+  - platform: ili9xxx
     id: main_display
+    model: ili9341
     spi_id: display_spi
-    cs_pin: GPIO5
-    dc_pin: GPIO4
-    reset_pin: GPIO22
+    cs_pin: GPIO10     # CS on J1
+    dc_pin: GPIO8      # DC/RS on J1
+    reset_pin: GPIO14  # LCD_RST on J3
     rotation: 0
     dimensions:
       width: 240
@@ -186,8 +188,8 @@ display:
 touchscreen:
   - platform: xpt2046
     spi_id: display_spi
-    cs_pin: GPIO21
-    irq_pin: GPIO27
+    cs_pin: GPIO9      # T_CS on J2
+    irq_pin: GPIO16    # T_IRQ on J2
     calibration:
       x_min: 200
       x_max: 3900
@@ -231,6 +233,21 @@ touchscreen:
           else if (x >= btn_x && x <= btn_x + btn_w && y >= start_y + spacing*3 && y <= start_y + spacing*3 + btn_h) {
             id(toggle_bedroom_fan).press();
           }
+
+# Backlight PWM control
+output:
+  - platform: ledc
+    id: backlight_pwm
+    pin: GPIO15       # LED on J1
+    frequency: 1000Hz
+
+light:
+  - platform: monochromatic
+    id: backlight
+    name: "${friendly_name} Backlight"
+    output: backlight_pwm
+    default_transition_length: 500ms
+    restore_mode: RESTORE_DEFAULT_ON
 
 # Fonts
 font:
@@ -309,3 +326,17 @@ interval:
   - interval: 2s
     then:
       - component.update: main_display
+
+# Turn off backlight when sleeping, on when waking
+  - interval: 500ms
+    then:
+      - lambda: |-
+          static bool last_state = true;
+          if (id(display_awake) != last_state) {
+            last_state = id(display_awake);
+            if (id(display_awake)) {
+              id(backlight).turn_on().perform();
+            } else {
+              id(backlight).turn_off().perform();
+            }
+          }
